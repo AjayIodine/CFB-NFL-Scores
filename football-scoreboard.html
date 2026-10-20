@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Scoreboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --field:      #2f5e34;
+    --field-dark: #244b28;
+    --field-line: #3d7343;
+    --cream:      #F5F0E8;
+    --gray:       #9a9a9a;
+    --dark:       #16241a;
+    --cfb-head:   #7a4a24;
+    --cfb-head2:  #8a5a30;
+    --nfl-head:   #6b4a2a;
+    --gold:       #EAAA00;
+    --red:        #CE1141;
+    --card:       #ffffff;
+    --card-ink:   #1a1a1a;
+    --card-sub:   #6a6a6a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--field);
+    color: var(--cream);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ── Field yard-line layer (behind everything) ── */
+  .field {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .yard-line {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: rgba(245,240,232,0.08);
+  }
+  .yard-line.major { width: 3px; background: rgba(245,240,232,0.18); }
+  .yard-num {
+    position: absolute;
+    font-family: 'Bebas Neue', cursive;
+    font-size: 72px;
+    line-height: 1;
+    color: rgba(245,240,232,0.08);
+    letter-spacing: 2px;
+    transform: translateX(-50%);
+    user-select: none;
+  }
+  .yard-num.top { top: 10px; }
+  .yard-num.bottom { bottom: 10px; }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 96px 28px 16px;
+  }
+
+  /* ── Board: two sport groups side by side; each caps a 2-week grid ── */
+  .board {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    align-items: start;
+  }
+  .sport-group { min-width: 0; }
+
+  .col-head {
+    text-align: center;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 3px;
+    color: var(--cream);
+    padding: 9px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+  .col-head.cfb { background: linear-gradient(180deg, var(--cfb-head2), var(--cfb-head)); }
+  .col-head.nfl { background: linear-gradient(180deg, var(--nfl-head), #5a3f24); }
+
+  .week-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .week-col { min-width: 0; }
+
+  .week-label {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.9);
+    margin: 0 2px 9px;
+    text-transform: uppercase;
+  }
+
+  /* ── Game card ── */
+  .game {
+    background: var(--card);
+    color: var(--card-ink);
+    border-radius: 5px;
+    padding: 6px 13px;
+    margin-bottom: 9px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    opacity: 0;
+    transform: translateY(5px);
+    animation: fadeUp 0.35s forwards;
+  }
+  @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+
+  .game.tab-gold::before,
+  .game.tab-red::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 5px;
+  }
+  .game.tab-gold::before { background: var(--gold); }
+  .game.tab-red::before  { background: var(--red); }
+  .game.tab-gold, .game.tab-red { padding-left: 14px; }
+
+  .game.live-game { box-shadow: 0 0 0 2px var(--red), 0 2px 8px rgba(0,0,0,0.25); }
+
+  /* meta row: date + status */
+  .g-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    color: var(--card-sub);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .g-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .g-badge.final { background: #eee;       color: #555; }
+  .g-badge.live  { background: var(--red); color: #fff; animation: glow 2s ease-in-out infinite alternate; }
+  @keyframes glow { from{box-shadow:0 0 3px rgba(206,17,65,0.4);} to{box-shadow:0 0 12px rgba(206,17,65,0.85);} }
+
+  /* stacked team rows */
+  .g-team {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+  }
+  .g-team + .g-team { border-top: 1px solid #f0f0f0; }
+
+  .g-name {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--card-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .g-name .rank { color: var(--red); font-weight: 700; font-size: 20px; vertical-align: 1px; margin-right: 3px; }
+
+  /* winner arrow — its own track, never clipped by name truncation */
+  .g-arrow {
+    width: 0; height: 0;
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-left: 9px solid var(--field);
+  }
+
+  .g-num {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 30px;
+    line-height: 0.9;
+    letter-spacing: 1px;
+    color: var(--card-ink);
+    min-width: 34px;
+    text-align: right;
+  }
+
+  /* winner / loser emphasis */
+  .g-team.winner .g-name { font-weight: 700; }
+  .g-team.winner .g-num  { color: var(--card-ink); }
+  .g-team.loser .g-name { color: #a5a5a5; font-weight: 400; }
+  .g-team.loser .g-num  { color: #bcbcbc; }
+
+  .g-team.live .g-num { color: var(--red); }
+
+  /* kickoff time for unplayed games — compact, sized like a score number
+     so upcoming cards stay as thin as final cards and the team names remain
+     the dominant text on the card */
+  .g-kick {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: 0.5px;
+    color: var(--field);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* network shown on the right, under the kickoff time (upcoming games) */
+  .g-net-right {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 8.5px;
+    color: #999;
+    letter-spacing: 0.5px;
+    text-align: right;
+    white-space: nowrap;
+    grid-column: 2 / 4;   /* span arrow + right track so wider names fit */
+  }
+  .g-kick { grid-column: 2 / 4; }   /* same span for the time above it */
+
+  .g-net {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: #999;
+    letter-spacing: 0.5px;
+    margin-left: auto;      /* push to the right edge of the meta row */
+    white-space: nowrap;
+    padding-left: 8px;
+  }
+
+  /* ── loading / error ── */
+  .loading-state, .error-state {
+    text-align: center; padding: 40px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px; color: rgba(255,255,255,0.7); letter-spacing: 2px;
+  }
+  .spinner {
+    width: 34px; height: 34px;
+    border: 3px solid rgba(255,255,255,0.15);
+    border-top-color: var(--cream);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="field" id="field" aria-hidden="true"></div>
+<div class="container">
+
+  <div class="board">
+    <div class="sport-group">
+      <div class="col-head cfb">COLLEGE FOOTBALL</div>
+      <div class="week-grid" id="cfb-body">
+        <div class="loading-state"><div class="spinner"></div>LOADING…</div>
+      </div>
+    </div>
+    <div class="sport-group">
+      <div class="col-head nfl">NFL</div>
+      <div class="week-grid" id="nfl-body">
+        <div class="loading-state"><div class="spinner"></div>LOADING…</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script>
+/* ── Field yard markers: a few evenly spaced numbered lines ── */
+  const YARDS = [10, 20, 30, 40, 50, 40, 30, 20, 10];   // real field sequence
+  function buildField() {
+    const field = document.getElementById('field');
+    if (!field) return;
+    field.innerHTML = '';
+    const n = YARDS.length;
+    YARDS.forEach((yd, i) => {
+      const pct = (i + 1) * 100 / (n + 1);
+      const line = document.createElement('div');
+      line.className = 'yard-line' + (yd === 50 ? ' major' : '');
+      line.style.left = pct + '%';
+      field.appendChild(line);
+      const top = document.createElement('div');
+      top.className = 'yard-num top';
+      top.style.left = pct + '%';
+      top.textContent = yd;
+      field.appendChild(top);
+      const bot = document.createElement('div');
+      bot.className = 'yard-num bottom';
+      bot.style.left = pct + '%';
+      bot.textContent = yd;
+      field.appendChild(bot);
+    });
+  }
+  buildField();
+  window.addEventListener('resize', buildField);
+
+/* ============================================================
+   AUTO-UPDATING SCOREBOARD
+   No hard-coded games. Each load fetches full weekly slates from
+   ESPN for LAST week (results) and THIS week (upcoming), then ranks
+   and picks the biggest matchups to fill each column — with the
+   home teams below always pinned in regardless of ranking.
+   ============================================================ */
+
+  const CFB = 'college-football';
+  const NFL = 'nfl';
+
+  // Teams that always appear if they played / are playing that week.
+  // These are matched EXACTLY against a team's ESPN identifiers (not substring),
+  // so 'georgia' pins only the Georgia Bulldogs — never Georgia State/Southern.
+  // Each entry lists the acceptable exact identifier strings for one team.
+  const PIN = {
+    [CFB]: [
+      { tab: 'gold', ids: ['georgia tech', 'georgia tech yellow jackets', 'yellow jackets', 'ga tech'] },
+      { tab: 'red',  ids: ['georgia', 'georgia bulldogs', 'bulldogs uga'] },
+    ],
+    [NFL]: [
+      { tab: 'red',  ids: ['falcons', 'atlanta falcons', 'atlanta'] },
+    ],
+  };
+
+  // Does this game involve the given pin entry? Exact id match on either team.
+  function gameHasPin(g, entry) {
+    const ids = (g.awayIds || []).concat(g.homeIds || []);
+    return entry.ids.some(x => ids.includes(x));
+  }
+  function isPinned(g, league) {
+    return (PIN[league] || []).some(entry => gameHasPin(g, entry));
+  }
+  // Tab color: first matching pin entry wins (GT checked before UGA via order).
+  function tabFor(g) {
+    const entry = (PIN[g.league] || []).find(e => gameHasPin(g, e));
+    return entry ? entry.tab : null;
+  }
+
+  const HOW_MANY = 4;   // games per week-column (fills the column)
+
+  const cache = {};
+  async function fetchSlate(league, params) {
+    const key = league + ':' + params;
+    if (cache[key] !== undefined) return cache[key];
+    try {
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/${league}/scoreboard?${params}`);
+      const data = await res.json();
+      cache[key] = data.events || [];
+    } catch (e) {
+      cache[key] = null;
+    }
+    return cache[key];
+  }
+
+  function norm(s) { return (s||'').toLowerCase().replace(/[^a-z]/g, ''); }
+
+  // Pull the fields we need out of an ESPN event into a simple object.
+  function parseEvent(ev, league) {
+    const comp = ev.competitions?.[0];
+    if (!comp) return null;
+    const away = comp.competitors.find(c => c.homeAway === 'away');
+    const home = comp.competitors.find(c => c.homeAway === 'home');
+    if (!away || !home) return null;
+    const net = (comp.broadcasts?.[0]?.names?.[0]
+              || comp.geoBroadcasts?.[0]?.media?.shortName || '').toUpperCase();
+    const rankOf = c => (c.curatedRank && c.curatedRank.current && c.curatedRank.current <= 25)
+                        ? String(c.curatedRank.current) : '';
+    // Win total from a team's record summary like "6-1" → 6 (for NFL quality).
+    const winsOf = c => {
+      const sum = (c.records && (c.records.find(r => r.type==='total') || c.records[0]) || {}).summary || '';
+      const m = sum.match(/^(\d+)-(\d+)/);
+      return m ? Number(m[1]) : null;
+    };
+    // Exact team identifiers, lowercased, for precise pinning (so "Georgia"
+    // doesn't match "Georgia State"). We keep several forms ESPN uses.
+    const idsOf = c => [c.team?.displayName, c.team?.shortDisplayName, c.team?.name, c.team?.location]
+                        .filter(Boolean).map(x => x.toLowerCase());
+    const nameBlob = [away.team?.displayName, away.team?.location, away.team?.name,
+                      home.team?.displayName, home.team?.location, home.team?.name].join(' ');
+    return {
+      league,
+      comp,
+      date: comp.date,
+      state: comp.status?.type?.state || 'pre',
+      awayName: away.team?.shortDisplayName || away.team?.name || away.team?.displayName || '',
+      homeName: home.team?.shortDisplayName || home.team?.name || home.team?.displayName || '',
+      rankAway: rankOf(away),
+      rankHome: rankOf(home),
+      winsAway: winsOf(away),
+      winsHome: winsOf(home),
+      awayIds: idsOf(away),
+      homeIds: idsOf(home),
+      net,
+      nameBlob,
+    };
+  }
+
+  // Score a game's "bigness" for ranking (higher = show first).
+  // College: driven by AP/CFP rankings (network is ignored — see note below).
+  // NFL: no rankings exist AND every game is on some regional network, so
+  // network tells us nothing about quality. Rank purely by team records
+  // (combined wins), so two good teams beat two bad ones.
+  function bigness(g) {
+    if (g.league === NFL) {
+      const wa = g.winsAway == null ? 0 : g.winsAway;
+      const wh = g.winsHome == null ? 0 : g.winsHome;
+      // reward combined wins, and reward two solid teams over one good/one bad
+      return (wa + wh) * 2 + Math.min(wa, wh) * 3;
+    }
+    // College
+    let s = 0;
+    const ra = g.rankAway ? Number(g.rankAway) : 99;
+    const rh = g.rankHome ? Number(g.rankHome) : 99;
+    if (g.rankAway && g.rankHome) s += 100;                 // both ranked = marquee
+    else if (g.rankAway || g.rankHome) s += 40;             // one ranked
+    s += Math.max(0, 26 - Math.min(ra, rh));               // better rank = higher
+    return s;
+  }
+
+  // A non-pinned game only qualifies as "marquee" filler if it clears a bar.
+  // College: must have at least one ranked team (no unranked mid-major games).
+  // NFL: must have a combined record above water-ish (skip two losing teams).
+  function qualifiesAsFiller(g) {
+    if (g.league === CFB) return !!(g.rankAway || g.rankHome);
+    // NFL: require at least one team with a winning-ish record, and not two
+    // clearly bad teams. If records are unavailable, allow it (don't over-filter).
+    const wa = g.winsAway, wh = g.winsHome;
+    if (wa == null && wh == null) return true;
+    const maxW = Math.max(wa || 0, wh || 0);
+    return maxW >= 4;   // at least one team with 4+ wins
+  }
+
+  // Choose up to HOW_MANY games: pinned teams first, then biggest others.
+  function pickGames(events, league) {
+    const games = (events || []).map(ev => parseEvent(ev, league)).filter(Boolean);
+    const pinned = games.filter(g => isPinned(g, league));
+    const rest   = games.filter(g => !isPinned(g, league))
+                        .sort((a,b) => bigness(b) - bigness(a));
+    const chosen = [];
+    const seen = new Set();
+    for (const g of [...pinned, ...rest]) {
+      const id = g.awayName + '@' + g.homeName + g.date;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      chosen.push(g);
+      if (chosen.length >= HOW_MANY) break;
+    }
+    // sort final set by kickoff time for a tidy column
+    chosen.sort((a,b) => new Date(a.date) - new Date(b.date));
+    return chosen;
+  }
+
+  function fmtKick(iso) {
+    const d = new Date(iso);
+    const day = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+    const mon = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const dt  = d.getDate();
+    const tm  = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return `${day} · ${mon} ${dt} · ${tm} ET`;
+  }
+
+  function rankSpan(r) { return r ? `<span class="rank">#${r}</span>` : ''; }
+
+  function teamRow(rank, name, rowClass, rightHTML, isWinner) {
+    const arrow = isWinner ? `<span class="g-arrow"></span>` : `<span></span>`;
+    return `
+      <div class="g-team ${rowClass}">
+        <div class="g-name">${rankSpan(rank)}${name}</div>
+        ${arrow}
+        ${rightHTML}
+      </div>`;
+  }
+
+  // Render one game object (from parseEvent) into a card.
+  function renderGame(g) {
+    const tab = tabFor(g);
+    const tabClass = tab ? ` tab-${tab}` : '';
+    const comp = g.comp;
+    const away = comp.competitors.find(c => c.homeAway === 'away');
+    const home = comp.competitors.find(c => c.homeAway === 'home');
+    const as = away?.score, hs = home?.score;
+    const state = g.state;
+
+    let metaDate = fmtKick(comp.date).replace(/ · \d.*ET$/, '');
+    let kickTime = new Date(comp.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' ET';
+
+    let badgeHTML = '';
+    let liveClass = '';
+    if (state === 'post') badgeHTML = `<span class="g-badge final">FINAL</span>`;
+    else if (state === 'in') { badgeHTML = `<span class="g-badge live">${comp.status?.type?.shortDetail || 'LIVE'}</span>`; liveClass = ' live-game'; }
+
+    let awayRow, homeRow;
+    if (state === 'pre') {
+      awayRow = teamRow(g.rankAway, g.awayName, '', `<div class="g-kick">${kickTime}</div>`, false);
+      homeRow = teamRow(g.rankHome, g.homeName, '', `<span></span>`, false);
+    } else {
+      const awayN = Number(as), homeN = Number(hs);
+      const played = state === 'post';
+      const liveRow = state === 'in' ? ' live' : '';
+      const awayWin = played && awayN > homeN;
+      const homeWin = played && homeN > awayN;
+      const awayCls = played ? (awayWin ? 'winner' : awayN < homeN ? 'loser' : '') : '';
+      const homeCls = played ? (homeWin ? 'winner' : homeN < awayN ? 'loser' : '') : '';
+      awayRow = teamRow(g.rankAway, g.awayName, (awayCls + liveRow).trim(), `<div class="g-num">${as}</div>`, awayWin);
+      homeRow = teamRow(g.rankHome, g.homeName, (homeCls + liveRow).trim(), `<div class="g-num">${hs}</div>`, homeWin);
+    }
+
+    const netTop = g.net ? `<span class="g-net">${g.net}</span>` : '';
+
+    return `
+      <div class="game${tabClass}${liveClass}">
+        <div class="g-meta"><span>${metaDate}</span>${badgeHTML}${netTop}</div>
+        ${awayRow}
+        ${homeRow}
+      </div>
+    `;
+  }
+
+  function colHTML(label, games) {
+    let inner = `<div class="week-label">${label}</div>`;
+    if (!games || games.length === 0) {
+      inner += `<div class="game"><div class="g-meta"><span>No games</span></div></div>`;
+    } else {
+      for (const g of games) inner += renderGame(g);
+    }
+    return `<div class="week-col">${inner}</div>`;
+  }
+
+  // Read the current season year, season type, and week straight from ESPN's
+  // bare scoreboard response (the hyphenated date-range query was unreliable
+  // for college; ESPN's own week query is the robust path).
+  const metaCache = {};
+  async function fetchMeta(league) {
+    if (metaCache[league] !== undefined) return metaCache[league];
+    try {
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/${league}/scoreboard`);
+      const data = await res.json();
+      metaCache[league] = {
+        year:   data.season?.year,
+        stype:  data.season?.type || data.week?.seasonType || 2,  // 2 = regular season
+        week:   data.week?.number,
+        events: data.events || [],          // this is already the current week's slate
+      };
+    } catch (e) {
+      metaCache[league] = null;
+    }
+    return metaCache[league];
+  }
+
+  // Params for a specific week. If year/stype unknown, fall back to a bare
+  // (current-week) request.
+  function weekParam(meta, weekNum) {
+    if (!meta || !meta.year || !weekNum || weekNum < 1) return '';   // '' → bare = current week
+    return `dates=${meta.year}&seasontype=${meta.stype}&week=${weekNum}`;
+  }
+
+  // Fetch one week's events (by number) for a league.
+  async function weekEvents(league, meta, weekNum) {
+    const p = weekParam(meta, weekNum);
+    if (!p) return [];
+    return (await fetchSlate(league, p)) || [];
+  }
+
+  // Which pin ENTRIES are NOT represented in a set of chosen games?
+  function missingPins(chosen, league) {
+    return (PIN[league] || []).filter(entry => !chosen.some(g => gameHasPin(g, entry)));
+  }
+
+  // ── DATE-BASED FETCHING ──────────────────────────────────────────────
+  // Week numbers proved unreliable (ESPN's reported current week didn't line
+  // up with the calendar, so games got missed). Single-date queries are
+  // unambiguous and confirmed working, so everything below fetches by date.
+
+  function ymd(d) {
+    return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+  }
+
+  // Fetch all events across a list of Date objects (one request per day),
+  // parse them, and de-duplicate by matchup+date.
+  async function eventsForDates(league, dates) {
+    const slates = await Promise.all(dates.map(d => fetchSlate(league, 'dates=' + ymd(d))));
+    const all = [];
+    const seen = new Set();
+    for (const evs of slates) {
+      for (const ev of (evs || [])) {
+        const g = parseEvent(ev, league);
+        if (!g) continue;
+        const id = g.awayName + '@' + g.homeName + '|' + g.date;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        all.push(g);
+      }
+    }
+    return all;
+  }
+
+  // Build a list of Date objects from `startOffset` to `endOffset` days
+  // relative to today (inclusive).
+  function dayRange(startOffset, endOffset) {
+    const out = [];
+    const base = new Date();
+    for (let i = startOffset; i <= endOffset; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      out.push(d);
+    }
+    return out;
+  }
+
+  // From a pool of parsed games, pick the pinned team's single most relevant
+  // game: for upcoming, the earliest future one; for results, the most recent
+  // past one.
+  function pinnedGameFromPool(pool, entry, wantFuture) {
+    const now = Date.now();
+    const mine = pool.filter(g => gameHasPin(g, entry));
+    if (!mine.length) return null;
+    if (wantFuture) {
+      const fut = mine.filter(g => new Date(g.date).getTime() >= now - 6*3600*1000)
+                      .sort((a,b) => new Date(a.date) - new Date(b.date));
+      return fut[0] || null;
+    } else {
+      const past = mine.filter(g => new Date(g.date).getTime() <= now)
+                       .sort((a,b) => new Date(b.date) - new Date(a.date));
+      return past[0] || null;
+    }
+  }
+
+  // Ensure every pinned team appears in `chosen`. If one is missing, search a
+  // wider pool (fetched by date) for its next/previous game and slot it in,
+  // trimming the weakest non-pinned filler to keep the column size.
+  async function ensurePins(chosen, league, widePool, wantFuture) {
+    const missing = missingPins(chosen, league);
+    for (const pin of missing) {
+      const g = pinnedGameFromPool(widePool, pin, wantFuture);
+      if (!g) continue;
+      const id = g.awayName + '@' + g.homeName + g.date;
+      if (chosen.some(c => (c.awayName + '@' + c.homeName + c.date) === id)) continue;
+      const filler = chosen.map((c,i)=>({c,i})).filter(x=>!isPinned(x.c,league))
+                           .sort((a,b)=>bigness(a.c)-bigness(b.c))[0];
+      if (chosen.length >= HOW_MANY && filler) chosen.splice(filler.i, 1);
+      chosen.push(g);
+    }
+    chosen.sort((a,b) => new Date(a.date) - new Date(b.date));
+    return chosen;
+  }
+
+  async function renderSport(league, elId, lastLabel, thisLabel) {
+    // THIS WEEK: today through 7 days ahead. LAST WEEK: 1–8 days ago.
+    // Plus a WIDE pool (−10 to +35 days) used only to locate a pinned team's
+    // nearest game when they're on a bye in the core window.
+    const thisPool = await eventsForDates(league, dayRange(0, 7));
+    const lastPool = await eventsForDates(league, dayRange(-8, -1));
+
+    if (thisPool.length === 0 && lastPool.length === 0) {
+      document.getElementById(elId).innerHTML =
+        `<div class="error-state">UNABLE TO LOAD GAMES</div>`;
+      return;
+    }
+
+    let thisGames = pickParsed(thisPool, league);
+    let lastGames = pickParsed(lastPool, league);
+
+    // Bye-week backfill using wider date pools.
+    const fwdWide  = await eventsForDates(league, dayRange(8, 35));
+    const backWide = await eventsForDates(league, dayRange(-35, -9));
+    thisGames = await ensurePins(thisGames, league, thisPool.concat(fwdWide), true);
+    lastGames = await ensurePins(lastGames, league, lastPool.concat(backWide), false);
+
+    document.getElementById(elId).innerHTML =
+      colHTML(lastLabel, lastGames) + colHTML(thisLabel, thisGames);
+  }
+
+  // Pick from already-parsed games (pinned first, then biggest), capped at
+  // HOW_MANY, ordered by kickoff.
+  function pickParsed(games, league) {
+    const pinned = games.filter(g => isPinned(g, league));
+    const rest   = games.filter(g => !isPinned(g, league) && qualifiesAsFiller(g))
+                        .sort((a,b) => bigness(b) - bigness(a));
+    const chosen = [];
+    const seen = new Set();
+    for (const g of [...pinned, ...rest]) {
+      const id = g.awayName + '@' + g.homeName + g.date;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      chosen.push(g);
+      if (chosen.length >= HOW_MANY) break;
+    }
+    chosen.sort((a,b) => new Date(a.date) - new Date(b.date));
+    return chosen;
+  }
+
+  async function refresh() {
+    for (const k in cache) delete cache[k];
+    for (const k in metaCache) delete metaCache[k];
+    await Promise.all([
+      renderSport(CFB, 'cfb-body', 'LAST WEEK · RESULTS', 'THIS WEEK · UPCOMING'),
+      renderSport(NFL, 'nfl-body', 'LAST WEEK · RESULTS', 'THIS WEEK · UPCOMING'),
+    ]);
+  }
+
+  let lastRefresh = 0;
+  const DAY = 86400000;
+  async function maybeRefresh(force) {
+    if (force || Date.now() - lastRefresh >= DAY) {
+      lastRefresh = Date.now();
+      await refresh();
+    }
+  }
+  maybeRefresh(true);
+  setInterval(() => maybeRefresh(false), 3600000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) maybeRefresh(false);
+  });
+
+</script>
+</body>
+</html>
